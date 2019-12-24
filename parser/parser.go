@@ -9,7 +9,7 @@ import (
 //GetLinks : Parse all links from the HTML document
 func GetLinks(htm io.Reader) ([]string, error) {
 	htmlTree, err := html.Parse(htm)
-	links := make([]string, 0)
+	links := make(map[string]bool)
 
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func GetLinks(htm io.Reader) ([]string, error) {
 			attributes := node.Attr
 			for _, attr := range attributes {
 				if attr.Key == "href" {
-					links = append(links, sanitizeLink(attr.Val))
+					links[attr.Val] = true
 				}
 			}
 		}
@@ -32,7 +32,28 @@ func GetLinks(htm io.Reader) ([]string, error) {
 	}
 
 	crawl(htmlTree)
-	return links, nil
+
+	keys := make([]string, 0, len(links))
+	for key := range links {
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+//FilterPatternLinks : This will filter out links without the prefix
+func FilterPatternLinks(links []string, patterns []string) []string {
+	resultLinks := make([]string, 0)
+
+	for _, link := range links {
+		for _, pattern := range patterns {
+			if strings.HasPrefix(link, pattern) {
+				resultLinks = append(resultLinks, link)
+				break
+			}
+		}
+	}
+
+	return resultLinks
 }
 
 func sanitizeLink(link string) string {

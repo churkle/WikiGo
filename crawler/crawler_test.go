@@ -1,12 +1,19 @@
 package crawler
 
-import "testing"
+import (
+	"testing"
+)
 
-func TestHello(t *testing.T) {
-	got := Hello()
-	want := "Hello!"
+func TestGetHTMLReaderFromURL(t *testing.T) {
+	t.Run("Retrieving HTML reader from a URL", func(t *testing.T) {
+		result, err := GetHTMLReaderFromURL("https://www.wikipedia.org/")
 
-	if got != want {
-		t.Errorf("got %q want %q", got, want)
-	}
+		if err != nil {
+			t.Error(err)
+		}
+
+		if result == "" {
+			t.Error("Couldn't retrieve URL")
+		}
+	})
 }
