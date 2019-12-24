@@ -10,7 +10,7 @@ func main() {
 	exclude := []string{"Wikipedia:", "Special:", "Help:", "Books:", "File:", ".jpg"}
 	myCrawler := crawler.NewCrawler("https://en.wikipedia.org/wiki/UK_miners'_strike_(1984%E2%80%9385)",
 		"https://en.wikipedia.org/wiki/Lawrence_Daly",
-		"https://en.wikipedia.org", patterns, exclude, ">Notes<", 4)
+		"https://en.wikipedia.org", patterns, exclude, ">Notes<", 2)
 
 	path, err := myCrawler.GetShortestPathToArticle()
 
@@ -18,7 +18,7 @@ func main() {
 		fmt.Print(err)
 	}
 
-	for _, site := range path {
-		fmt.Print(site + " -> ")
+	if path == nil {
+		fmt.Println("FAILED")
 	}
 }
