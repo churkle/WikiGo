@@ -180,3 +180,58 @@ func TestFilterPatternLinks(t *testing.T) {
 		assertSameSlice(t, FilterPatternLinks(testLinks, patterns), expected)
 	})
 }
+
+func TestRemoveExcludedLinks(t *testing.T) {
+	t.Run("Exclude specific domain", func(t *testing.T) {
+		exclude := []string{"apple"}
+		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
+		expected := []string{"http://www.yahoo.com/"}
+
+		assertSameSlice(t, RemoveExcludedLinks(testLinks, exclude), expected)
+	})
+}
+
+func TestPrependDomain(t *testing.T) {
+	t.Run("Prepend empty string", func(t *testing.T) {
+		prefix := ""
+		testLinks := []string{"www.yahoo.com/", "www.apple.com/"}
+		expected := []string{"www.yahoo.com/", "www.apple.com/"}
+
+		assertSameSlice(t, PrependDomainToLinks(testLinks, prefix), expected)
+	})
+
+	t.Run("Prepend http", func(t *testing.T) {
+		prefix := "http://"
+		testLinks := []string{"www.yahoo.com/", "www.apple.com/"}
+		expected := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
+
+		assertSameSlice(t, PrependDomainToLinks(testLinks, prefix), expected)
+	})
+}
+
+func TestTrimDocument(t *testing.T) {
+	t.Run("Trim html", func(t *testing.T) {
+		testBody := `<html>
+<head>
+<title>Test website</title>
+</head>
+<body>
+<p>Here's another <a href=http://www.google.com/>Link!</a></p>
+<p>Here's a <a href=http://www.yahoo.com/>Link!</a></p>
+<p>Test paragraph</p>
+<p>Here's another <a href=http://www.google.com/>Link!</a></p>
+<p>Here's a <a href=http://www.yahoo.com/>Link!</a></p>
+</body>
+</html>`
+		expected := `<html>
+<head>
+<title>Test website</title>
+</head>
+`
+
+		result := TrimDocument(testBody, "<body>")
+		if result != expected {
+			t.Errorf("Expected '%q' but got '%q'", expected, result)
+		}
+	})
+}
