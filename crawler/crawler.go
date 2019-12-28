@@ -2,43 +2,68 @@ package crawler
 
 import (
 	"WikiGo/parser"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"sync"
+	"time"
+)
+
+// FileLimit : max number of files that can be open at once
+const (
+	FileLimit = 1000
 )
 
 //Crawler : struct that has a source and destination page with a map cache of shortest distances
 //          between the page (key) and destination
 type Crawler struct {
+	wikiParser   *parser.Parser
 	src          string
 	dest         string
-	domain       string
-	pattern      []string
-	exclude      []string
-	trimMarker   string
+	srcTitle     string
+	destTitle    string
 	limit        int
 	shortestPath []string
+	netClient    http.Client
 	mux          sync.Mutex
 }
 
 // NewCrawler : creates a new crawler object with src and dest pages
-func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker string, limit int) *Crawler {
-	c := Crawler{src: src, dest: dest, domain: domain, pattern: pattern, exclude: exclude, trimMarker: trimMarker, limit: limit}
+func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker []string, limit int) *Crawler {
+	c := Crawler{src: src, dest: dest, limit: limit}
+	c.wikiParser = parser.NewParser(domain, pattern, exclude, trimMarker)
 	c.shortestPath = make([]string, 0)
+	srcHTML, _ := c.GetHTMLFromURL(src)
+	destHTML, _ := c.GetHTMLFromURL(dest)
+	c.srcTitle, _ = c.wikiParser.ExtractDocumentTitle(srcHTML)
+	c.destTitle, _ = c.wikiParser.ExtractDocumentTitle(destHTML)
+	tr := &http.Transport{
+		MaxIdleConns:        15,
+		MaxIdleConnsPerHost: 15,
+		IdleConnTimeout:     30 * time.Second,
+		DisableCompression:  true,
+	}
+	c.netClient = http.Client{Transport: tr}
 	return &c
 }
 
 // GetShortestPathToArticle : Takes two URLs and computes the shortest way to
 //                           get from one to the other through links
 func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
+	if c.srcTitle == "" || c.destTitle == "" {
+		return nil, errors.New("Unable to retrieve src or destination page")
+	}
+
 	for i := 1; i <= c.limit; i++ {
+		fmt.Println(i)
 		history := make([]string, 0)
+		maxChan := make(chan bool, FileLimit)
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		c.crawl(c.src, history, i, &wg)
+		maxChan <- true
+		c.crawl(c.src, history, i, &wg, maxChan)
 
 		wg.Wait()
 
@@ -53,9 +78,24 @@ func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
 	return nil, nil
 }
 
-func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.WaitGroup) {
+func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.WaitGroup, maxChan chan bool) {
 	defer wg.Done()
+	defer func(maxChan chan bool) { <-maxChan }(maxChan)
+
 	path := append(history, url)
+	htm, err := c.GetHTMLFromURL(url)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	title, err := c.wikiParser.ExtractDocumentTitle(htm)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(title)
 
 	if url == c.dest {
 		c.updateShortestPath(path)
@@ -66,36 +106,26 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 		return
 	}
 
-	if url == "" {
-		fmt.Println("Empty URL")
+	if title == "" {
+		fmt.Println("Error retrieving document")
 		return
 	}
 
-	htm, err := GetHTMLFromURL(url)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	htm = parser.TrimDocument(htm, c.trimMarker)
-
-	links, err := parser.GetLinks(strings.NewReader(htm))
-	links = parser.PrependDomainToLinks(parser.RemoveExcludedLinks(parser.FilterPatternLinks(links, c.pattern), c.exclude), c.domain)
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	links, _ := c.wikiParser.GetLinks(htm)
 
 	for _, link := range links {
+		visited := false
 		for _, site := range history {
 			if link == site {
-				return
+				visited = true
 			}
 		}
 
-		wg.Add(1)
-		go c.crawl(link, path, maxDepth, wg)
+		if !visited {
+			wg.Add(1)
+			maxChan <- true
+			go c.crawl(link, path, maxDepth, wg, maxChan)
+		}
 	}
 
 	return
@@ -121,8 +151,8 @@ func printPath(path []string) {
 }
 
 //GetHTMLFromURL : Retrieves the HTML reader from a URL
-func GetHTMLFromURL(url string) (string, error) {
-	resp, err := http.Get(url)
+func (c *Crawler) GetHTMLFromURL(url string) (string, error) {
+	resp, err := c.netClient.Get(url)
 
 	if err != nil {
 		return "", err

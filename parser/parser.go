@@ -3,13 +3,28 @@ package parser
 import (
 	"bytes"
 	"golang.org/x/net/html"
-	"io"
 	"strings"
 )
 
-//GetLinks : Parse all links from the HTML document
-func GetLinks(htm io.Reader) ([]string, error) {
-	htmlTree, err := html.Parse(htm)
+// Parser : struct that takes parses HTML documents, using a domain to find links for,
+//          patterns to look for, links to exclude, and a trim marker to crop HTML at
+type Parser struct {
+	domain      string
+	pattern     []string
+	exclude     []string
+	trimMarkers []string
+}
+
+// NewParser : Creates a new parser object with the given parameters
+func NewParser(domain string, pattern []string, exclude []string, trimMarkers []string) *Parser {
+	p := Parser{domain: domain, pattern: pattern, exclude: exclude, trimMarkers: trimMarkers}
+	return &p
+}
+
+// GetLinks : Parse all links from the HTML document
+func (p *Parser) GetLinks(htm string) ([]string, error) {
+	cleanedHtm := strings.NewReader(p.trimDocument(htm))
+	htmlTree, err := html.Parse(cleanedHtm)
 	links := make(map[string]bool)
 
 	if err != nil {
@@ -38,15 +53,45 @@ func GetLinks(htm io.Reader) ([]string, error) {
 	for key := range links {
 		keys = append(keys, key)
 	}
+
+	keys = p.prependDomainToLinks(p.removeExcludedLinks(p.filterPatternLinks(keys)))
 	return keys, nil
 }
 
-//FilterPatternLinks : This will filter out links without the prefix
-func FilterPatternLinks(links []string, patterns []string) []string {
+// ExtractDocumentTitle : Extracts document title from HTML string
+func (p *Parser) ExtractDocumentTitle(htm string) (string, error) {
+	htmStream := strings.NewReader(p.trimDocument(htm))
+	startNode, err := html.Parse(htmStream)
+	title := ""
+
+	if err != nil {
+		return "", err
+	}
+
+	var crawl func(node *html.Node)
+	crawl = func(node *html.Node) {
+		if node.Type == html.ElementNode && node.Data == "title" {
+			title = node.FirstChild.Data
+		}
+
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			crawl(child)
+		}
+	}
+
+	crawl(startNode)
+	return title, nil
+}
+
+func (p *Parser) filterPatternLinks(links []string) []string {
+	if p.pattern == nil || len(p.pattern) == 0 {
+		return links
+	}
+
 	resultLinks := make([]string, 0)
 
 	for _, link := range links {
-		for _, pattern := range patterns {
+		for _, pattern := range p.pattern {
 			if strings.HasPrefix(link, pattern) {
 				resultLinks = append(resultLinks, link)
 				break
@@ -57,13 +102,16 @@ func FilterPatternLinks(links []string, patterns []string) []string {
 	return resultLinks
 }
 
-// RemoveExcludedLinks : Removes any links that contain any of the substrings to exclude
-func RemoveExcludedLinks(links []string, exclude []string) []string {
+func (p *Parser) removeExcludedLinks(links []string) []string {
+	if p.exclude == nil || len(p.exclude) == 0 {
+		return links
+	}
+
 	results := make([]string, 0)
 	for _, link := range links {
 		shouldInclude := true
 
-		for _, subStr := range exclude {
+		for _, subStr := range p.exclude {
 			if strings.Contains(link, subStr) {
 				shouldInclude = false
 				break
@@ -78,12 +126,15 @@ func RemoveExcludedLinks(links []string, exclude []string) []string {
 	return results
 }
 
-// PrependDomainToLinks : Creates a new list of links with the given domain prepended
-func PrependDomainToLinks(links []string, prefix string) []string {
+func (p *Parser) prependDomainToLinks(links []string) []string {
+	if p.domain == "" {
+		return links
+	}
+
 	newLinks := make([]string, 0)
 	for _, link := range links {
 		var buffer bytes.Buffer
-		buffer.WriteString(prefix)
+		buffer.WriteString(p.domain)
 		buffer.WriteString(link)
 		newLinks = append(newLinks, buffer.String())
 	}
@@ -91,10 +142,18 @@ func PrependDomainToLinks(links []string, prefix string) []string {
 	return newLinks
 }
 
-// TrimDocument : Trim all parts of the HTML document after a delimiter appears
-func TrimDocument(htm string, delimiter string) string {
-	parts := strings.Split(htm, delimiter)
-	return parts[0]
+func (p *Parser) trimDocument(htm string) string {
+	if p.trimMarkers == nil || len(p.trimMarkers) == 0 {
+		return htm
+	}
+
+	parts := htm
+
+	for _, marker := range p.trimMarkers {
+		parts = strings.Split(htm, marker)[0]
+	}
+
+	return parts
 }
 
 func sanitizeLink(link string) string {

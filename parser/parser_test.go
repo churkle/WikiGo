@@ -2,7 +2,6 @@ package parser
 
 import (
 	"io/ioutil"
-	"strings"
 	"testing"
 )
 
@@ -29,9 +28,9 @@ func assertSameSlice(t *testing.T, result, expected []string) {
 
 func TestGetLinks(t *testing.T) {
 	t.Run("Using an empty body", func(t *testing.T) {
-		testBody := ""
+		p := NewParser("", []string{}, []string{}, "")
 
-		result, err := GetLinks(strings.NewReader(testBody))
+		result, err := p.GetLinks("")
 
 		if err != nil {
 			t.Error(err)
@@ -43,6 +42,8 @@ func TestGetLinks(t *testing.T) {
 	})
 
 	t.Run("Body with no links", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
+
 		testBody := `<html>
 <head>
 <title>Test website</title>
@@ -52,7 +53,7 @@ func TestGetLinks(t *testing.T) {
 </body>
 </html>`
 
-		result, err := GetLinks(strings.NewReader(testBody))
+		result, err := p.GetLinks(testBody)
 
 		if err != nil {
 			t.Error(err)
@@ -64,6 +65,7 @@ func TestGetLinks(t *testing.T) {
 	})
 
 	t.Run("Finding a single link", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
 		testBody := `<html>
 <head>
 <title>Test website</title>
@@ -74,7 +76,7 @@ func TestGetLinks(t *testing.T) {
 </body>
 </html>`
 
-		result, err := GetLinks(strings.NewReader(testBody))
+		result, err := p.GetLinks(testBody)
 
 		if err != nil {
 			t.Error(err)
@@ -86,6 +88,7 @@ func TestGetLinks(t *testing.T) {
 	})
 
 	t.Run("Finding multiple links", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
 		testBody := `<html>
 <head>
 <title>Test website</title>
@@ -97,7 +100,7 @@ func TestGetLinks(t *testing.T) {
 </body>
 </html>`
 
-		result, err := GetLinks(strings.NewReader(testBody))
+		result, err := p.GetLinks(testBody)
 
 		if err != nil {
 			t.Error(err)
@@ -109,6 +112,7 @@ func TestGetLinks(t *testing.T) {
 	})
 
 	t.Run("Don't add duplicates", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
 		testBody := `<html>
 <head>
 <title>Test website</title>
@@ -122,7 +126,7 @@ func TestGetLinks(t *testing.T) {
 </body>
 </html>`
 
-		result, err := GetLinks(strings.NewReader(testBody))
+		result, err := p.GetLinks(testBody)
 
 		if err != nil {
 			t.Error(err)
@@ -134,9 +138,10 @@ func TestGetLinks(t *testing.T) {
 	})
 
 	t.Run("Finding nested links", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
 		body, _ := ioutil.ReadFile("test.html")
 		htm := string(body)
-		result, err := GetLinks(strings.NewReader(htm))
+		result, err := p.GetLinks(htm)
 
 		if err != nil {
 			t.Error(err)
@@ -145,91 +150,34 @@ func TestGetLinks(t *testing.T) {
 		expected := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
 		assertSameSlice(t, result, expected)
 	})
-}
 
-func TestFilterPatternLinks(t *testing.T) {
-	t.Run("Filter empty pattern", func(t *testing.T) {
-		patterns := []string{""}
-		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-		expected := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
+	t.Run("Find links after trim", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "<ul>")
+		body, _ := ioutil.ReadFile("test.html")
+		htm := string(body)
+		result, err := p.GetLinks(htm)
 
-		assertSameSlice(t, FilterPatternLinks(testLinks, patterns), expected)
-	})
+		if err != nil {
+			t.Error(err)
+		}
 
-	t.Run("Filter http pattern", func(t *testing.T) {
-		patterns := []string{"http://"}
-		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-		expected := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-
-		assertSameSlice(t, FilterPatternLinks(testLinks, patterns), expected)
-	})
-
-	t.Run("Filter pattern that fits none", func(t *testing.T) {
-		patterns := []string{"https://"}
-		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-		expected := []string{}
-
-		assertSameSlice(t, FilterPatternLinks(testLinks, patterns), expected)
-	})
-
-	t.Run("Filter specific domain", func(t *testing.T) {
-		patterns := []string{"http://www.yahoo.com"}
-		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
 		expected := []string{"http://www.yahoo.com/"}
-
-		assertSameSlice(t, FilterPatternLinks(testLinks, patterns), expected)
+		assertSameSlice(t, result, expected)
 	})
 }
 
-func TestRemoveExcludedLinks(t *testing.T) {
-	t.Run("Exclude specific domain", func(t *testing.T) {
-		exclude := []string{"apple"}
-		testLinks := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-		expected := []string{"http://www.yahoo.com/"}
+func TestExtractDocumentTitle(t *testing.T) {
+	t.Run("Find title of document", func(t *testing.T) {
+		p := NewParser("", []string{}, []string{}, "")
+		body, _ := ioutil.ReadFile("test.html")
+		htm := string(body)
+		result, err := p.ExtractDocumentTitle(htm)
 
-		assertSameSlice(t, RemoveExcludedLinks(testLinks, exclude), expected)
-	})
-}
+		if err != nil {
+			t.Error(err)
+		}
 
-func TestPrependDomain(t *testing.T) {
-	t.Run("Prepend empty string", func(t *testing.T) {
-		prefix := ""
-		testLinks := []string{"www.yahoo.com/", "www.apple.com/"}
-		expected := []string{"www.yahoo.com/", "www.apple.com/"}
-
-		assertSameSlice(t, PrependDomainToLinks(testLinks, prefix), expected)
-	})
-
-	t.Run("Prepend http", func(t *testing.T) {
-		prefix := "http://"
-		testLinks := []string{"www.yahoo.com/", "www.apple.com/"}
-		expected := []string{"http://www.yahoo.com/", "http://www.apple.com/"}
-
-		assertSameSlice(t, PrependDomainToLinks(testLinks, prefix), expected)
-	})
-}
-
-func TestTrimDocument(t *testing.T) {
-	t.Run("Trim html", func(t *testing.T) {
-		testBody := `<html>
-<head>
-<title>Test website</title>
-</head>
-<body>
-<p>Here's another <a href=http://www.google.com/>Link!</a></p>
-<p>Here's a <a href=http://www.yahoo.com/>Link!</a></p>
-<p>Test paragraph</p>
-<p>Here's another <a href=http://www.google.com/>Link!</a></p>
-<p>Here's a <a href=http://www.yahoo.com/>Link!</a></p>
-</body>
-</html>`
-		expected := `<html>
-<head>
-<title>Test website</title>
-</head>
-`
-
-		result := TrimDocument(testBody, "<body>")
+		expected := "Test website"
 		if result != expected {
 			t.Errorf("Expected '%q' but got '%q'", expected, result)
 		}
