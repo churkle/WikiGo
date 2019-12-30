@@ -15,7 +15,7 @@ const (
 	FileLimit = 1000
 )
 
-//Crawler : struct that has a source and destination page with a map cache of shortest distances
+// Crawler : struct that has a source and destination page with a map cache of shortest distances
 //          between the page (key) and destination
 type Crawler struct {
 	wikiParser   *parser.Parser
@@ -24,18 +24,19 @@ type Crawler struct {
 	srcTitle     string
 	destTitle    string
 	limit        int
+	isWebCrawler bool
 	shortestPath []string
 	netClient    http.Client
 	mux          sync.Mutex
 }
 
-// NewCrawler : creates a new crawler object with src and dest pages
-func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker []string, limit int) *Crawler {
-	c := Crawler{src: src, dest: dest, limit: limit}
+// NewCrawler : creates a new Crawler object with src and dest pages
+func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker []string, limit int, isWebCrawler bool) *Crawler {
+	c := Crawler{src: src, dest: dest, limit: limit, isWebCrawler: isWebCrawler}
 	c.wikiParser = parser.NewParser(domain, pattern, exclude, trimMarker)
 	c.shortestPath = make([]string, 0)
-	srcHTML, _ := c.GetHTMLFromURL(src)
-	destHTML, _ := c.GetHTMLFromURL(dest)
+	srcHTML, _ := c.getHTMLFromURL(src)
+	destHTML, _ := c.getHTMLFromURL(dest)
 	c.srcTitle, _ = c.wikiParser.ExtractDocumentTitle(srcHTML)
 	c.destTitle, _ = c.wikiParser.ExtractDocumentTitle(destHTML)
 	tr := &http.Transport{
@@ -56,6 +57,12 @@ func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
 	}
 
 	for i := 1; i <= c.limit; i++ {
+		if c.shortestPath != nil && len(c.shortestPath) != 0 {
+			fmt.Println("SUCCESS")
+			printPath(c.shortestPath)
+			return c.shortestPath, nil
+		}
+
 		fmt.Println(i)
 		history := make([]string, 0)
 		maxChan := make(chan bool, FileLimit)
@@ -66,12 +73,12 @@ func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
 		c.crawl(c.src, history, i, &wg, maxChan)
 
 		wg.Wait()
+	}
 
-		if c.shortestPath != nil && len(c.shortestPath) != 0 {
-			fmt.Println("SUCCESS")
-			printPath(c.shortestPath)
-			return c.shortestPath, nil
-		}
+	if c.shortestPath != nil && len(c.shortestPath) != 0 {
+		fmt.Println("SUCCESS")
+		printPath(c.shortestPath)
+		return c.shortestPath, nil
 	}
 
 	fmt.Println("FAIL")
@@ -82,8 +89,7 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 	defer wg.Done()
 	defer func(maxChan chan bool) { <-maxChan }(maxChan)
 
-	path := append(history, url)
-	htm, err := c.GetHTMLFromURL(url)
+	htm, err := c.getHTMLFromURL(url)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -95,9 +101,10 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 		return
 	}
 
+	path := append(history, title)
 	fmt.Println(title)
 
-	if url == c.dest {
+	if title == c.destTitle {
 		c.updateShortestPath(path)
 		return
 	}
@@ -114,9 +121,15 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 	links, _ := c.wikiParser.GetLinks(htm)
 
 	for _, link := range links {
+		linkTitle, err := c.wikiParser.ExtractDocumentTitle(link)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
 		visited := false
+
 		for _, site := range history {
-			if link == site {
+			if linkTitle == site {
 				visited = true
 			}
 		}
@@ -150,19 +163,28 @@ func printPath(path []string) {
 	fmt.Println("")
 }
 
-//GetHTMLFromURL : Retrieves the HTML reader from a URL
-func (c *Crawler) GetHTMLFromURL(url string) (string, error) {
-	resp, err := c.netClient.Get(url)
+func (c *Crawler) getHTMLFromURL(url string) (string, error) {
+	var result []byte
+	var err error
+	if c.isWebCrawler {
+		resp, err := c.netClient.Get(url)
 
-	if err != nil {
-		return "", err
-	}
+		if err != nil {
+			return "", err
+		}
 
-	defer resp.Body.Close()
-	result, err := ioutil.ReadAll(resp.Body)
+		defer resp.Body.Close()
+		result, err = ioutil.ReadAll(resp.Body)
 
-	if err != nil {
-		return "", err
+		if err != nil {
+			return "", err
+		}
+	} else {
+		result, err = ioutil.ReadFile(url)
+
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return string(result), nil
