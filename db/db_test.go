@@ -53,6 +53,17 @@ func (d *TestDatabaseDriver) InsertPage(title string, url string, insertionTime 
 	return nil
 }
 
+func (d *TestDatabaseDriver) InsertPageTitleOnly(title string, insertionTime time.Time) error {
+	_, err := d.db.Exec(
+		`INSERT INTO pages (title, url, isCrawled, lastCrawled)
+		VALUES ($1, $2, $3, $4)`, title, "", "f", insertionTime.String())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (d *TestDatabaseDriver) InsertEdge(srcID int, destID int) error {
 	_, err := d.db.Exec(
 		`INSERT INTO edges (srcID, destID)
@@ -66,9 +77,7 @@ func (d *TestDatabaseDriver) InsertEdge(srcID int, destID int) error {
 
 func (d *TestDatabaseDriver) UpdatePageAsCrawled(title string, url string, insertionTime time.Time) error {
 	_, err := d.db.Exec(
-		`UPDATE pages
-		SET url = $1, isCrawled = "t", lastCrawled = $2
-		WHERE title = $3`, url, insertionTime.String(), title)
+		`UPDATE pages`)
 	if err != nil {
 		return err
 	}
@@ -76,7 +85,7 @@ func (d *TestDatabaseDriver) UpdatePageAsCrawled(title string, url string, inser
 	return nil
 }
 
-func (d *TestDatabaseDriver) RetrievePageURLAndLinks(pageTitle string) (string, []string) {
+func (d *TestDatabaseDriver) RetrievePageLinks(pageTitle string) []string {
 	rs, _ := d.db.Query("SELECT pages")
 	defer rs.Close()
 
@@ -89,11 +98,50 @@ func (d *TestDatabaseDriver) RetrievePageURLAndLinks(pageTitle string) (string, 
 		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
 
 		if pageTitle == title && isCrawled == "t" {
-			return url, d.retrieveTitles(d.retrieveEdges(id))
+			return d.retrieveTitlesOfIDs(d.retrieveEdges(id))
 		}
 	}
 
-	return "", nil
+	return nil
+}
+
+func (d *TestDatabaseDriver) RetrievePageURL(pageTitle string) string {
+	rs, _ := d.db.Query("SELECT pages")
+	defer rs.Close()
+
+	for rs.Next() {
+		var id int
+		var title string
+		var url string
+		var isCrawled string
+		var lastCrawled string
+		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+
+		if pageTitle == title && isCrawled == "t" {
+			return url
+		}
+	}
+
+	return ""
+}
+
+func (d *TestDatabaseDriver) RetrieveAllPageTitles() []string {
+	rs, _ := d.db.Query("SELECT pages")
+	defer rs.Close()
+	titles := make([]string, 0)
+
+	for rs.Next() {
+		var id int
+		var title string
+		var url string
+		var isCrawled string
+		var lastCrawled string
+		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+
+		titles = append(titles, title)
+	}
+
+	return titles
 }
 
 func (d *TestDatabaseDriver) RetrievePageID(pageTitle string) int {
@@ -127,14 +175,14 @@ func (d *TestDatabaseDriver) retrieveEdges(srcID int) []int {
 		rs.Scan(&src, &dest)
 
 		if srcID == src {
-			destIDs = append(destIDs, src)
+			destIDs = append(destIDs, dest)
 		}
 	}
 
 	return destIDs
 }
 
-func (d *TestDatabaseDriver) retrieveTitles(ids []int) []string {
+func (d *TestDatabaseDriver) retrieveTitlesOfIDs(ids []int) []string {
 	rs, _ := d.db.Query("SELECT pages")
 	defer rs.Close()
 
@@ -171,28 +219,63 @@ func assertSameWikiPage(t *testing.T, expected *wikipage.WikiPage, result *wikip
 	}
 }
 
+type TestPage struct {
+	title     string
+	url       string
+	isCrawled string
+}
+
 func TestInsertPage(t *testing.T) {
 	t.Run("Test inserting one page", func(t *testing.T) {
+		testObject := TestPage{title: "Example Page", url: "www.example.com", isCrawled: "t"}
+		testLink := TestPage{title: "Example 1", url: "", isCrawled: "f"}
+
 		db, mock, err := sqlmock.New()
 		if err != nil {
 			fmt.Println("failed to open sqlmock database:", err)
 		}
 		defer db.Close()
 
-		pageRows := sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"})
-		edgeRows := sqlmock.NewRows([]string{"srcID", "destID"})
-		mock.ExpectQuery("SELECT pages").WillReturnRows(pageRows)
-		mock.ExpectQuery("SELECT edges").WillReturnRows(edgeRows)
-		mock.ExpectExec("INSERT INTO pages").WithArgs("Example Page", "www.example.com", "t", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}))
+		mock.ExpectExec("INSERT INTO pages").WithArgs(testObject.title, "", "f", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA"))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA"))
+		mock.ExpectExec("INSERT INTO pages").WithArgs(testLink.title, testLink.url, testLink.isCrawled, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
+				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
 		mock.ExpectExec("INSERT INTO edges").WithArgs(0, 1).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("UPDATE pages").WillReturnResult(sqlmock.NewResult(1, 1))
+
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
+				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
+				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
+		mock.ExpectQuery("SELECT edges").WillReturnRows(sqlmock.NewRows([]string{"srcID", "destID"}).AddRow(0, 1))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
+				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
+		mock.ExpectQuery("SELECT pages").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
+				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
+				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
 
 		testDriver := NewTestDBDriver(db)
-
 		testDBService := NewDBService(testDriver)
-		testPage := wikipage.NewWikiPage("www.example.com", "Example Page", []string{"Example 1"})
+		testPage := wikipage.NewWikiPage(testObject.url, testObject.title, []string{"Example 1"})
 		testDBService.AddPage(testPage)
 
-		expected := map[string][]string{"Example Page": []string{"Example 1"}}
+		expected := map[string][]string{testObject.title: []string{"Example 1"}}
 		result := testDBService.GetPageGraph()
 
 		if !reflect.DeepEqual(expected, result) {

@@ -12,5 +12,7 @@ type Driver interface {
 	InsertPageTitleOnly(title string, insertionTime time.Time) error
 	UpdatePageAsCrawled(title string, url string, insertionTime time.Time) error
 	InsertEdge(sourceID int, destID int) error
-	RetrievePageURLAndLinks(pageTitle string) (string, []string)
+	RetrievePageLinks(pageTitle string) []string
+	RetrievePageURL(pageTitle string) string
+	RetrieveAllPageTitles() []string
 }

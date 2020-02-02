@@ -48,5 +48,20 @@ func (s *Service) AddPage(page *wikipage.WikiPage) error {
 
 // GetPageGraph : Returns an adjacency list of a graph of wiki articles that have links to each other
 func (s *Service) GetPageGraph() map[string][]string {
+	titles := s.driver.RetrieveAllPageTitles()
+	graph := make(map[string][]string)
 
+	for _, title := range titles {
+		links := s.driver.RetrievePageLinks(title)
+		if links != nil {
+			graph[title] = links
+		}
+	}
+
+	return graph
 }
+
+// GetURLs : Returns a map of page titles and their URLs
+//func (s *Service) GetURLs() map[string]string {
+
+//}
