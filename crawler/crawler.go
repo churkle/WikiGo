@@ -1,9 +1,7 @@
 package crawler
 
 import (
-	"WikiGo/db"
 	"WikiGo/parser"
-	"WikiGo/wikipage"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -21,7 +19,6 @@ const (
 //          between the page (key) and destination
 type Crawler struct {
 	wikiParser   *parser.Parser
-	dbService    *db.Service
 	src          string
 	dest         string
 	srcTitle     string
@@ -29,7 +26,6 @@ type Crawler struct {
 	limit        int
 	isWebCrawler bool
 	shortestPath []string
-	pageCache    map[string]*wikipage.WikiPage
 	netClient    http.Client
 	mux          sync.Mutex
 }
@@ -39,7 +35,6 @@ func NewCrawler(src string, dest string, domain string, pattern []string, exclud
 	c := Crawler{src: src, dest: dest, limit: limit, isWebCrawler: isWebCrawler}
 	c.wikiParser = parser.NewParser(domain, pattern, exclude, trimMarker)
 	c.shortestPath = make([]string, 0)
-	c.pageCache = make(map[string]*wikipage.WikiPage)
 	srcHTML, _ := c.getHTMLFromURL(src)
 	destHTML, _ := c.getHTMLFromURL(dest)
 	c.srcTitle, _ = c.wikiParser.ExtractDocumentTitle(srcHTML)
@@ -75,7 +70,7 @@ func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
 
 		wg.Add(1)
 		maxChan <- true
-		c.crawl(c.src, c.srcTitle, history, i, &wg, maxChan)
+		c.crawl(c.src, history, i, &wg, maxChan)
 
 		wg.Wait()
 	}
@@ -90,38 +85,9 @@ func (c *Crawler) GetShortestPathToArticle() ([]string, error) {
 	return nil, nil
 }
 
-func (c *Crawler) crawl(url string, title string, history []string, maxDepth int, wg *sync.WaitGroup, maxChan chan bool) {
+func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.WaitGroup, maxChan chan bool) {
 	defer wg.Done()
 	defer func(maxChan chan bool) { <-maxChan }(maxChan)
-
-	var page *wikipage.WikiPage
-
-	c.mux.Lock()
-	page = c.pageCache[title]
-	c.mux.Unlock()
-
-	if page != nil {
-		for _, linkName := range page.GetLinks() {
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			visited := false
-
-			for _, site := range history {
-				if linkTitle == site {
-					visited = true
-				}
-			}
-
-			if !visited {
-				wg.Add(1)
-				maxChan <- true
-				go c.crawl(link, "", path, maxDepth, wg, maxChan)
-			}
-		}
-		return
-	}
 
 	htm, err := c.getHTMLFromURL(url)
 	if err != nil {
@@ -130,24 +96,15 @@ func (c *Crawler) crawl(url string, title string, history []string, maxDepth int
 	}
 
 	title, err := c.wikiParser.ExtractDocumentTitle(htm)
-	linkURLs, _ := c.wikiParser.GetLinks(htm)
-
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	page = wikipage.NewWikiPageNoLinks(url, title)
-	err = c.addWikipageToCacheAndDB(page)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	path := append(history, title)
+	fmt.Println(title)
 
-	path := append(history, page.GetTitle())
-	fmt.Println(page.GetTitle())
-
-	if page.GetTitle() == c.destTitle {
+	if title == c.destTitle {
 		c.updateShortestPath(path)
 		return
 	}
@@ -156,12 +113,14 @@ func (c *Crawler) crawl(url string, title string, history []string, maxDepth int
 		return
 	}
 
-	if page.GetTitle() == "" {
+	if title == "" {
 		fmt.Println("Error retrieving document")
 		return
 	}
 
-	for _, link := range linkURLs {
+	links, _ := c.wikiParser.GetLinks(htm)
+
+	for _, link := range links {
 		linkTitle, err := c.wikiParser.ExtractDocumentTitle(link)
 		if err != nil {
 			fmt.Println(err)
@@ -176,25 +135,13 @@ func (c *Crawler) crawl(url string, title string, history []string, maxDepth int
 		}
 
 		if !visited {
-			page.AddLink(linkTitle)
 			wg.Add(1)
 			maxChan <- true
-			go c.crawl(link, "", path, maxDepth, wg, maxChan)
+			go c.crawl(link, path, maxDepth, wg, maxChan)
 		}
 	}
 
 	return
-}
-
-func (c *Crawler) addWikipageToCacheAndDB(page *wikipage.WikiPage) error {
-	c.mux.Lock()
-	err := c.dbService.AddPage(page)
-	c.pageCache[page.GetTitle()] = page
-	c.mux.Unlock()
-
-	if err != nil {
-		return err
-	}
 }
 
 func (c *Crawler) updateShortestPath(path []string) {
