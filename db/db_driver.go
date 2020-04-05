@@ -2,6 +2,8 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -33,19 +35,21 @@ func NewSQLDriver(db *sql.DB) *SQLDriver {
 
 // PageExists : Queries all pages in the db and finds if the page with given title exists
 func (d *SQLDriver) PageExists(pageTitle string) bool {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	rs, err := d.db.Query(`SELECT title FROM pages WHERE title=$1`, pageTitle)
 
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-		if pageTitle == title {
-			return true
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var title string
+			rs.Scan(&title)
+
+			if pageTitle == title {
+				return true
+			}
 		}
 	}
 
@@ -70,6 +74,7 @@ func (d *SQLDriver) InsertPageTitleOnly(title string, insertionTime time.Time) e
 		`INSERT INTO pages (title, url, isCrawled, lastCrawled)
 		VALUES ($1, $2, $3, $4)`, title, "", "f", insertionTime.String())
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 
@@ -105,19 +110,22 @@ func (d *SQLDriver) UpdatePageAsCrawled(title string, url string, insertionTime 
 
 // RetrievePageLinks : Retrieves all the titles of pages that are linked to the page with the given title
 func (d *SQLDriver) RetrievePageLinks(pageTitle string) []string {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	rs, err := d.db.Query(`SELECT id, title, isCrawled FROM pages WHERE title=$1`, pageTitle)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var id int
+			var title string
+			var isCrawled string
+			rs.Scan(&id, &title, &isCrawled)
 
-		if pageTitle == title && isCrawled == "t" {
-			return d.retrieveTitlesOfIDs(d.retrieveEdges(id))
+			if isCrawled == "t" {
+				return d.retrieveTitlesOfIDs(d.retrieveEdges(id))
+			}
 		}
 	}
 
@@ -126,19 +134,22 @@ func (d *SQLDriver) RetrievePageLinks(pageTitle string) []string {
 
 // RetrievePageURL : Gets the URL of the page with the given title
 func (d *SQLDriver) RetrievePageURL(pageTitle string) string {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	rs, err := d.db.Query(`SELECT title, isCrawled, url FROM pages WHERE title=$1`, pageTitle)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var title string
+			var url string
+			var isCrawled string
+			rs.Scan(&title, &url, &isCrawled)
 
-		if pageTitle == title && isCrawled == "t" {
-			return url
+			if pageTitle == title && isCrawled == "t" {
+				return url
+			}
 		}
 	}
 
@@ -147,19 +158,21 @@ func (d *SQLDriver) RetrievePageURL(pageTitle string) string {
 
 // RetrieveAllPageTitles : Retrieves a list of all page titles in the db
 func (d *SQLDriver) RetrieveAllPageTitles() []string {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	rs, err := d.db.Query("SELECT title FROM pages")
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	titles := make([]string, 0)
 
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var title string
+			rs.Scan(&title)
 
-		titles = append(titles, title)
+			titles = append(titles, title)
+		}
 	}
 
 	return titles
@@ -167,18 +180,17 @@ func (d *SQLDriver) RetrieveAllPageTitles() []string {
 
 // RetrievePageID : Retrieves the ID of the page with the given title
 func (d *SQLDriver) RetrievePageID(pageTitle string) int {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	rs, err := d.db.Query(`SELECT id FROM pages WHERE title=$1`, pageTitle)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var id int
+			rs.Scan(&id)
 
-		if pageTitle == title {
 			return id
 		}
 	}
@@ -187,17 +199,23 @@ func (d *SQLDriver) RetrievePageID(pageTitle string) int {
 }
 
 func (d *SQLDriver) retrieveEdges(srcID int) []int {
-	rs, _ := d.db.Query("SELECT edges")
-	defer rs.Close()
+	rs, err := d.db.Query(`SELECT * FROM edges WHERE src=$1`, srcID)
 
+	if err != nil {
+		fmt.Println(err)
+	}
 	destIDs := make([]int, 0)
-	for rs.Next() {
-		var src int
-		var dest int
-		rs.Scan(&src, &dest)
 
-		if srcID == src {
-			destIDs = append(destIDs, dest)
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var src int
+			var dest int
+			rs.Scan(&src, &dest)
+
+			if srcID == src {
+				destIDs = append(destIDs, dest)
+			}
 		}
 	}
 
@@ -205,22 +223,28 @@ func (d *SQLDriver) retrieveEdges(srcID int) []int {
 }
 
 func (d *SQLDriver) retrieveTitlesOfIDs(ids []int) []string {
-	rs, _ := d.db.Query("SELECT pages")
-	defer rs.Close()
+	idListString := ""
+	for index, id := range ids {
+		idListString += strconv.Itoa(id)
+		if index < len(ids) {
+			idListString += ","
+		}
+	}
+	rs, err := d.db.Query("SELECT id, title FROM pages WHERE id in ($1)", idListString)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	titles := make([]string, 0)
-	for rs.Next() {
-		var id int
-		var title string
-		var url string
-		var isCrawled string
-		var lastCrawled string
-		rs.Scan(&id, &title, &url, &isCrawled, &lastCrawled)
 
-		for _, x := range ids {
-			if id == x {
-				titles = append(titles, title)
-			}
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var id int
+			var title string
+			rs.Scan(&id, &title)
+
+			titles = append(titles, title)
 		}
 	}
 

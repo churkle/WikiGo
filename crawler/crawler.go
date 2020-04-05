@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"WikiGo/db"
 	"WikiGo/parser"
 	"errors"
 	"fmt"
@@ -18,21 +19,28 @@ const (
 // Crawler : struct that has a source and destination page with a map cache of shortest distances
 //          between the page (key) and destination
 type Crawler struct {
-	wikiParser   *parser.Parser
-	src          string
-	dest         string
-	srcTitle     string
-	destTitle    string
-	limit        int
-	isWebCrawler bool
-	shortestPath []string
-	netClient    http.Client
-	mux          sync.Mutex
+	wikiParser    *parser.Parser
+	src           string
+	dest          string
+	srcTitle      string
+	destTitle     string
+	limit         int
+	isWebCrawler  bool
+	shortestPath  []string
+	netClient     http.Client
+	mux           sync.Mutex
+	dbService     *db.Service
+	adjacencyList map[string][]string
 }
 
 // NewCrawler : creates a new Crawler object with src and dest pages
-func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker []string, limit int, isWebCrawler bool) *Crawler {
-	c := Crawler{src: src, dest: dest, limit: limit, isWebCrawler: isWebCrawler}
+func NewCrawler(src string, dest string, domain string, pattern []string, exclude []string, trimMarker []string,
+	limit int, isWebCrawler bool, dbService *db.Service) *Crawler {
+
+	c := Crawler{src: src, dest: dest, limit: limit, isWebCrawler: isWebCrawler, dbService: dbService}
+	if c.dbService != nil {
+		c.adjacencyList = c.dbService.GetPageGraph()
+	}
 	c.wikiParser = parser.NewParser(domain, pattern, exclude, trimMarker)
 	c.shortestPath = make([]string, 0)
 	srcHTML, _ := c.getHTMLFromURL(src)

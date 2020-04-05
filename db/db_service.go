@@ -2,6 +2,7 @@ package db
 
 import (
 	"WikiGo/wikipage"
+	"fmt"
 	"time"
 )
 
@@ -18,18 +19,21 @@ func NewDBService(driver Driver) *Service {
 // AddPage : Adds a wikipage entry to the database
 func (s *Service) AddPage(page *wikipage.WikiPage) error {
 	var err error
+	title := page.GetTitle()
+	currentTime := time.Now()
 
-	if !s.driver.PageExists(page.GetTitle()) {
-		err = s.driver.InsertPageTitleOnly(page.GetTitle(), time.Now())
+	if !s.driver.PageExists(title) {
+		err = s.driver.InsertPageTitleOnly(title, currentTime)
 		if err != nil {
+			fmt.Println(err)
 			return err
 		}
 	}
 
-	srcID := s.driver.RetrievePageID(page.GetTitle())
+	srcID := s.driver.RetrievePageID(title)
 	for _, link := range page.GetLinks() {
 		if !s.driver.PageExists(link) {
-			err = s.driver.InsertPageTitleOnly(link, time.Now())
+			err = s.driver.InsertPageTitleOnly(link, currentTime)
 			if err != nil {
 				return err
 			}
@@ -41,7 +45,7 @@ func (s *Service) AddPage(page *wikipage.WikiPage) error {
 		}
 	}
 
-	s.driver.UpdatePageAsCrawled(page.GetTitle(), page.GetURL(), time.Now())
+	s.driver.UpdatePageAsCrawled(title, page.GetURL(), currentTime)
 
 	return nil
 }
@@ -62,6 +66,16 @@ func (s *Service) GetPageGraph() map[string][]string {
 }
 
 // GetURLs : Returns a map of page titles and their URLs
-//func (s *Service) GetURLs() map[string]string {
+func (s *Service) GetURLs() map[string]string {
+	titles := s.driver.RetrieveAllPageTitles()
+	urlMap := make(map[string]string)
 
-//}
+	for _, title := range titles {
+		url := s.driver.RetrievePageURL(title)
+		if url != "" {
+			urlMap[title] = url
+		}
+	}
+
+	return urlMap
+}

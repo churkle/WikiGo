@@ -40,36 +40,32 @@ func TestInsertPage(t *testing.T) {
 		}
 		defer db.Close()
 
-		mock.ExpectQuery("SELECT pages").WillReturnRows(sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}))
+		mock.ExpectQuery(`SELECT`).WithArgs(testObject.title).WillReturnRows(sqlmock.NewRows([]string{"title"}))
 		mock.ExpectExec("INSERT INTO pages").WithArgs(testObject.title, "", "f", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA"))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA"))
+		mock.ExpectQuery(`SELECT`).WithArgs(testObject.title).WillReturnRows(
+			sqlmock.NewRows([]string{"id"}).
+				AddRow(0))
+		mock.ExpectQuery(`SELECT`).WithArgs(testLink.title).WillReturnRows(
+			sqlmock.NewRows([]string{"title"}))
 		mock.ExpectExec("INSERT INTO pages").WithArgs(testLink.title, testLink.url, testLink.isCrawled, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
-				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
+		mock.ExpectQuery(`SELECT`).WithArgs(testLink.title).WillReturnRows(
+			sqlmock.NewRows([]string{"id"}).
+				AddRow(1))
 		mock.ExpectExec("INSERT INTO edges").WithArgs(0, 1).WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("UPDATE pages").WillReturnResult(sqlmock.NewResult(1, 1))
 
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
-				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
-				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
-		mock.ExpectQuery("SELECT edges").WillReturnRows(sqlmock.NewRows([]string{"srcID", "destID"}).AddRow(0, 1))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
-				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
-				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
-		mock.ExpectQuery("SELECT pages").WillReturnRows(
+		mock.ExpectQuery(`SELECT`).WillReturnRows(
+			sqlmock.NewRows([]string{"title"}).
+				AddRow(testObject.title).
+				AddRow(testLink.title))
+		mock.ExpectQuery(`SELECT`).WithArgs(testObject.title).WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "isCrawled"}).
+				AddRow(0, testObject.title, testObject.isCrawled))
+		mock.ExpectQuery(`SELECT`).WillReturnRows(sqlmock.NewRows([]string{"srcID", "destID"}).AddRow(0, 1))
+		mock.ExpectQuery(`SELECT`).WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title"}).
+				AddRow(1, testLink.title))
+		mock.ExpectQuery(`SELECT`).WillReturnRows(
 			sqlmock.NewRows([]string{"id", "title", "url", "isCrawled", "lastCrawled"}).
 				AddRow(0, testObject.title, testObject.url, testObject.isCrawled, "NA").
 				AddRow(1, testLink.title, testLink.url, testLink.isCrawled, "NA"))
