@@ -18,6 +18,7 @@ type Driver interface {
 	RetrievePageLinks(pageTitle string) []string
 	RetrievePageURL(pageTitle string) string
 	RetrieveAllPageTitles() []string
+	RetrievePageInfo(title string) (string, bool, []string)
 }
 
 // SQLDriver : A struct that operates on the SQL db directly
@@ -196,6 +197,37 @@ func (d *SQLDriver) RetrievePageID(pageTitle string) int {
 	}
 
 	return -1
+}
+
+// RetrievePageInfo : Retrieves all page info for a page given its title
+func (d *SQLDriver) RetrievePageInfo(title string) (string, bool, []string) {
+	rs, err := d.db.Query(`SELECT url, isCrawled FROM pages WHERE title=$1`, title)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	var url string
+	var isCrawled bool
+	var links []string
+
+	if rs != nil {
+		defer rs.Close()
+		for rs.Next() {
+			var isCrawledString string
+			rs.Scan(&url, &isCrawledString)
+
+			if isCrawledString == "t" {
+				isCrawled = true
+			} else {
+				isCrawled = false
+			}
+
+		}
+	}
+
+	links = d.RetrievePageLinks(title)
+
+	return url, isCrawled, links
 }
 
 func (d *SQLDriver) retrieveEdges(srcID int) []int {

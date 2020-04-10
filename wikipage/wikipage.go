@@ -2,14 +2,20 @@ package wikipage
 
 // WikiPage : a struct representing a Wiki page and its links
 type WikiPage struct {
-	url   string
-	title string
-	links []string
+	url       string
+	title     string
+	links     []string
+	isCrawled bool
 }
 
 // NewWikiPage : Creates a new wikipage object with the given url, title and links
 func NewWikiPage(url string, title string, links []string) *WikiPage {
-	return &WikiPage{url: url, title: title, links: links}
+	return &WikiPage{url: url, title: title, links: links, isCrawled: false}
+}
+
+// NewWikiPageWithCrawlStatus : Creates a new wikipage object with the given url, title and links, and set crawled status
+func NewWikiPageWithCrawlStatus(url string, title string, links []string, isCrawled bool) *WikiPage {
+	return &WikiPage{url: url, title: title, links: links, isCrawled: isCrawled}
 }
 
 // NewWikiPageNoLinks : Creates a new wikipage object with no links

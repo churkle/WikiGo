@@ -31,6 +31,7 @@ type Crawler struct {
 	mux           sync.Mutex
 	dbService     *db.Service
 	adjacencyList map[string][]string
+	urlMap        map[string]string
 }
 
 // NewCrawler : creates a new Crawler object with src and dest pages
@@ -97,16 +98,25 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 	defer wg.Done()
 	defer func(maxChan chan bool) { <-maxChan }(maxChan)
 
-	htm, err := c.getHTMLFromURL(url)
-	if err != nil {
-		fmt.Println(err)
-		return
+	var title string
+	var links []string
+
+	if c.urlMap != nil {
+		title = c.urlMap[url]
 	}
 
-	title, err := c.wikiParser.ExtractDocumentTitle(htm)
-	if err != nil {
-		fmt.Println(err)
-		return
+	if title == "" {
+		htm, err := c.getHTMLFromURL(url)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		title, err = c.wikiParser.ExtractDocumentTitle(htm)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	path := append(history, title)
@@ -126,7 +136,19 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 		return
 	}
 
-	links, _ := c.wikiParser.GetLinks(htm)
+	if c.adjacencyList != nil {
+		links = c.adjacencyList[title]
+	}
+
+	if links == nil {
+		htm, err := c.getHTMLFromURL(url)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		links, _ = c.wikiParser.GetLinks(htm)
+	}
 
 	for _, link := range links {
 		linkTitle, err := c.wikiParser.ExtractDocumentTitle(link)
