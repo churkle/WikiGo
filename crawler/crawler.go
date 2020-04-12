@@ -3,6 +3,7 @@ package crawler
 import (
 	"WikiGo/db"
 	"WikiGo/parser"
+	"WikiGo/wikipage"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -19,19 +20,18 @@ const (
 // Crawler : struct that has a source and destination page with a map cache of shortest distances
 //          between the page (key) and destination
 type Crawler struct {
-	wikiParser    *parser.Parser
-	src           string
-	dest          string
-	srcTitle      string
-	destTitle     string
-	limit         int
-	isWebCrawler  bool
-	shortestPath  []string
-	netClient     http.Client
-	mux           sync.Mutex
-	dbService     *db.Service
-	adjacencyList map[string][]string
-	urlMap        map[string]string
+	wikiParser   *parser.Parser
+	src          string
+	dest         string
+	srcTitle     string
+	destTitle    string
+	limit        int
+	isWebCrawler bool
+	shortestPath []string
+	netClient    http.Client
+	mux          sync.Mutex
+	dbService    *db.Service
+	urlMap       map[string]string
 }
 
 // NewCrawler : creates a new Crawler object with src and dest pages
@@ -39,9 +39,7 @@ func NewCrawler(src string, dest string, domain string, pattern []string, exclud
 	limit int, isWebCrawler bool, dbService *db.Service) *Crawler {
 
 	c := Crawler{src: src, dest: dest, limit: limit, isWebCrawler: isWebCrawler, dbService: dbService}
-	if c.dbService != nil {
-		c.adjacencyList = c.dbService.GetPageGraph()
-	}
+	c.urlMap = c.dbService.GetURLs()
 	c.wikiParser = parser.NewParser(domain, pattern, exclude, trimMarker)
 	c.shortestPath = make([]string, 0)
 	srcHTML, _ := c.getHTMLFromURL(src)
@@ -117,8 +115,14 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 			fmt.Println(err)
 			return
 		}
+
+		if title == "" {
+			fmt.Println("Error retrieving document")
+			return
+		}
 	}
 
+	page := c.dbService.GetPage(title)
 	path := append(history, title)
 	fmt.Println(title)
 
@@ -131,16 +135,13 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 		return
 	}
 
-	if title == "" {
-		fmt.Println("Error retrieving document")
-		return
-	}
-
-	if c.adjacencyList != nil {
-		links = c.adjacencyList[title]
-	}
-
-	if links == nil {
+	if page != nil {
+		if page.GetCrawledStatus() {
+			links = page.GetLinks()
+		} else {
+			return
+		}
+	} else {
 		htm, err := c.getHTMLFromURL(url)
 		if err != nil {
 			fmt.Println(err)
@@ -148,6 +149,8 @@ func (c *Crawler) crawl(url string, history []string, maxDepth int, wg *sync.Wai
 		}
 
 		links, _ = c.wikiParser.GetLinks(htm)
+		page = wikipage.NewWikiPageWithCrawlStatus(url, title, links, true)
+		c.dbService.AddPage(page)
 	}
 
 	for _, link := range links {

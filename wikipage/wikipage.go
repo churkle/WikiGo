@@ -38,6 +38,11 @@ func (w *WikiPage) GetLinks() []string {
 	return w.links
 }
 
+// GetCrawledStatus : Get whether the page has been crawled
+func (w *WikiPage) GetCrawledStatus() bool {
+	return w.isCrawled
+}
+
 // AddLink : Sets the wikipage's links
 func (w *WikiPage) AddLink(link string) {
 	w.links = append(w.links, link)

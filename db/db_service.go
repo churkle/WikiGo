@@ -82,6 +82,10 @@ func (s *Service) GetURLs() map[string]string {
 
 // GetPage : Returns a wikipage object of a page title if it exists in the db
 func (s *Service) GetPage(title string) *wikipage.WikiPage {
-	url, isCrawled, links := s.driver.RetrievePageInfo(title)
-	return wikipage.NewWikiPageWithCrawlStatus(url, title, links, isCrawled)
+	if s.driver.PageExists(title) {
+		url, isCrawled, links := s.driver.RetrievePageInfo(title)
+		return wikipage.NewWikiPageWithCrawlStatus(url, title, links, isCrawled)
+	}
+
+	return nil
 }
